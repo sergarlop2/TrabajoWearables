@@ -15,7 +15,7 @@ from sklearn.metrics import accuracy_score
 import glob
 
 # Configuration
-window_size = 40  # Same as original, can be adjusted
+window_size = 80  # Same as original, can be adjusted
 activities = ["baseball", "bolos", "boxeo", "golf", "tenis", "reposo"]
 n_classes = len(activities)
 normalize = True
@@ -135,8 +135,16 @@ test_loader = DataLoader(test_dataset, batch_size=batch_size)
 
 # Define the CNN model
 class ActivityNet(nn.Module):
-    def __init__(self, n_classes):
+    def __init__(self, n_classes, window_size):
         super().__init__()
+        # Calculate the size of features after convolutions
+        # First conv: output_size = input_size - kernel_size + 1
+        # MaxPool: output_size = input_size // 2
+        size_after_conv1 = window_size - 5 + 1  # kernel_size=5
+        size_after_conv2 = size_after_conv1 - 5 + 1  # kernel_size=5
+        size_after_pool = size_after_conv2 // 2
+        self.flatten_size = 32 * size_after_pool  # 32 is the number of filters in conv2
+
         self.layer1 = nn.Sequential(
             nn.Conv1d(6, 64, kernel_size=5), nn.ReLU(), nn.BatchNorm1d(64)
         )
@@ -147,7 +155,9 @@ class ActivityNet(nn.Module):
             nn.Dropout(0.3),
             nn.MaxPool1d(2),
         )
-        self.layer3 = nn.Sequential(nn.Linear(512, 100), nn.ReLU(), nn.Dropout(0.3))
+        self.layer3 = nn.Sequential(
+            nn.Linear(self.flatten_size, 100), nn.ReLU(), nn.Dropout(0.3)
+        )
         self.layer4 = nn.Sequential(nn.Linear(100, n_classes))
 
     def forward(self, x):
@@ -159,9 +169,9 @@ class ActivityNet(nn.Module):
         return out
 
 
-# Initialize model, loss, and optimizer
+# Initialize model with window_size parameter
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-model = ActivityNet(n_classes).to(device)
+model = ActivityNet(n_classes, window_size).to(device)
 criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
