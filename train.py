@@ -26,7 +26,7 @@ def load_all_data():
     all_data = []
 
     for activity in activities:
-        df = pd.read_csv(f"datos_wii_{activity}.csv")
+        df = pd.read_csv(f"datasets/datos_wii_{activity}.csv")
         df["actividad"] = activities.index(activity)  # Convert activity to numeric
         all_data.append(df)
 
