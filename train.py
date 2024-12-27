@@ -6,61 +6,38 @@ Based on provided padel classifier
 
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.metrics import accuracy_score
-import glob
 
 # Configuration
-window_size = 80  # Same as original, can be adjusted
+window_size = 80
 activities = ["baseball", "bolos", "boxeo", "golf", "tenis", "reposo"]
 n_classes = len(activities)
 normalize = True
 
-
 # Load and preprocess all data
 def load_all_data():
     all_data = []
-
     for activity in activities:
         df = pd.read_csv(f"datasets/datos_wii_{activity}.csv")
-        df["actividad"] = activities.index(activity)  # Convert activity to numeric
+        df["actividad"] = activities.index(activity)
         all_data.append(df)
-
     return pd.concat(all_data, ignore_index=True)
-
 
 # Load the data
 datos = load_all_data()
 
-print(datos.info())
-print(datos.columns)
-print(datos.shape)
-
-# Visualize activity distribution
-plt.figure(figsize=(10, 5))
-plt.hist(datos["actividad"])
-plt.xticks(range(len(activities)), activities, rotation=45)
-plt.title("Activity Distribution")
-plt.grid(True)
-plt.show()
-
-
-# Create windows of sensor data
+# Function to create windows of sensor data
 def create_windows(data, window_size):
     windows = []
     labels = []
-
-    # Group by activity to ensure windows don't cross activities
     for _, group in data.groupby("actividad"):
-        # Create windows for each group
-        for i in range(0, len(group) - window_size, window_size // 2):  # 50% overlap
+        for i in range(0, len(group) - window_size, window_size // 4):  # 25% overlap
             window = group.iloc[i : i + window_size]
             if len(window) == window_size:
-                # Extract features in the correct order
                 features = np.concatenate(
                     [
                         window["pitch"].values,
@@ -73,40 +50,50 @@ def create_windows(data, window_size):
                 )
                 windows.append(features)
                 labels.append(window["actividad"].iloc[0])
-
     return np.array(windows), np.array(labels)
-
 
 # Create windowed dataset
 X, y = create_windows(datos, window_size)
 
+# Ensure no overlap between train, val, and test sets
+def split_data(X, y, test_size, val_size, random_state=42):
+    np.random.seed(random_state)
+    indices = np.arange(len(X))
+    np.random.shuffle(indices)
+
+    # Test set split
+    test_split = int(test_size * len(indices))
+    val_split = int(val_size * (len(indices) - test_split))
+
+    test_indices = indices[:test_split]
+    val_indices = indices[test_split : test_split + val_split]
+    train_indices = indices[test_split + val_split :]
+
+    return (
+        X[train_indices],
+        y[train_indices],
+        X[val_indices],
+        y[val_indices],
+        X[test_indices],
+        y[test_indices],
+    )
+
 # Split the data
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, shuffle=True, stratify=y, random_state=42
-)
+test_size = 0.2
+val_size = 0.15
+X_train, y_train, X_val, y_val, X_test, y_test = split_data(X, y, test_size, val_size)
 
-# Create validation set
-val_size = int(len(X_train) * 0.15)
-X_val = X_train[:val_size]
-y_val = y_train[:val_size]
-X_train = X_train[val_size:]
-y_train = y_train[val_size:]
-
-
-# Reshape data for CNN (samples, channels, time steps)
+# Reshape data for CNN
 def reshape_for_cnn(X):
-    # Reshape from (samples, features) to (samples, channels, timesteps)
     samples = X.shape[0]
     X = X.reshape(samples, 6, window_size)
     return X
-
 
 X_train = reshape_for_cnn(X_train)
 X_val = reshape_for_cnn(X_val)
 X_test = reshape_for_cnn(X_test)
 
 if normalize:
-    # Normalize per channel
     for i in range(6):
         mean = X_train[:, i, :].mean()
         std = X_train[:, i, :].std()
@@ -140,32 +127,29 @@ class ActivityNet(nn.Module):
         # Calculate the size of features after convolutions
         # First conv: output_size = input_size - kernel_size + 1
         # MaxPool: output_size = input_size // 2
-        size_after_conv1 = window_size - 5 + 1  # kernel_size=5
-        size_after_conv2 = size_after_conv1 - 5 + 1  # kernel_size=5
+        size_after_conv1 = window_size - 3 + 1  # kernel_size=3
+        size_after_conv2 = size_after_conv1 - 3 + 1  # kernel_size=3
         size_after_pool = size_after_conv2 // 2
-        self.flatten_size = 32 * size_after_pool  # 32 is the number of filters in conv2
+        self.flatten_size = 4 * size_after_pool  # 4 is the number of filters in conv2
 
         self.layer1 = nn.Sequential(
-            nn.Conv1d(6, 64, kernel_size=5), nn.ReLU(), nn.BatchNorm1d(64)
+            nn.Conv1d(6, 8, kernel_size=3), nn.ReLU(), nn.BatchNorm1d(8)
         )
         self.layer2 = nn.Sequential(
-            nn.Conv1d(64, 32, kernel_size=5),
+            nn.Conv1d(8, 4, kernel_size=3),
             nn.ReLU(),
-            nn.BatchNorm1d(32),
+            nn.BatchNorm1d(4),
             nn.Dropout(0.3),
             nn.MaxPool1d(2),
         )
         self.layer3 = nn.Sequential(
-            nn.Linear(self.flatten_size, 100), nn.ReLU(), nn.Dropout(0.3)
-        )
-        self.layer4 = nn.Sequential(nn.Linear(100, n_classes))
+            nn.Linear(self.flatten_size, n_classes))
 
     def forward(self, x):
         out = self.layer1(x)
         out = self.layer2(out)
         out = torch.flatten(out, 1)
         out = self.layer3(out)
-        out = self.layer4(out)
         return out
 
 
@@ -176,7 +160,7 @@ criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
 # Training loop
-num_epochs = 50
+num_epochs = 100
 best_val_acc = 0
 history = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
 
