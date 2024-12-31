@@ -103,12 +103,21 @@ X_val = reshape_for_cnn(X_val)
 X_test = reshape_for_cnn(X_test)
 
 if normalize:
+    norm_values = {"mean": [], "std": []}
+    
     for i in range(6):
         mean = X_train[:, i, :].mean()
+        norm_values["mean"].append(mean)
         std = X_train[:, i, :].std()
+        norm_values["std"].append(std)
+        
         X_train[:, i, :] = (X_train[:, i, :] - mean) / std
         X_val[:, i, :] = (X_val[:, i, :] - mean) / std
         X_test[:, i, :] = (X_test[:, i, :] - mean) / std
+        
+    # Save normalization values in a JSON file
+    with open("normalization_values.json", "w") as f:
+        json.dump(norm_values, f)
 
 # Convert to PyTorch tensors
 X_train = torch.FloatTensor(X_train)
@@ -254,28 +263,6 @@ plt.legend()
 
 plt.tight_layout()
 plt.show()
-
-
-def save_normalization_values(X_train):
-    """
-    Calculate and save normalization values (mean and std) for each sensor channel
-    """
-    norm_values = {"mean": [], "std": []}
-
-    for i in range(6):  # 6 channels of sensor data
-        mean = float(X_train[:, i, :].mean())
-        std = float(X_train[:, i, :].std())
-        norm_values["mean"].append(mean)
-        norm_values["std"].append(std)
-
-    # Save to file
-    with open("normalization_values.json", "w") as f:
-        json.dump(norm_values, f)
-
-    return norm_values
-
-
-save_normalization_values(X_train)
 
 # Test phase
 model.eval()
