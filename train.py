@@ -4,6 +4,7 @@ Activity Classifier using 1D Convolutional Neural Network
 Based on provided padel classifier
 """
 
+import json
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -18,6 +19,7 @@ activities = ["baseball", "bolos", "boxeo", "golf", "tenis", "reposo"]
 n_classes = len(activities)
 normalize = True
 
+
 # Load and preprocess all data
 def load_all_data():
     all_data = []
@@ -27,8 +29,10 @@ def load_all_data():
         all_data.append(df)
     return pd.concat(all_data, ignore_index=True)
 
+
 # Load the data
 datos = load_all_data()
+
 
 # Function to create windows of sensor data
 def create_windows(data, window_size):
@@ -52,8 +56,10 @@ def create_windows(data, window_size):
                 labels.append(window["actividad"].iloc[0])
     return np.array(windows), np.array(labels)
 
+
 # Create windowed dataset
 X, y = create_windows(datos, window_size)
+
 
 # Ensure no overlap between train, val, and test sets
 def split_data(X, y, test_size, val_size, random_state=42):
@@ -78,16 +84,19 @@ def split_data(X, y, test_size, val_size, random_state=42):
         y[test_indices],
     )
 
+
 # Split the data
 test_size = 0.2
 val_size = 0.15
 X_train, y_train, X_val, y_val, X_test, y_test = split_data(X, y, test_size, val_size)
+
 
 # Reshape data for CNN
 def reshape_for_cnn(X):
     samples = X.shape[0]
     X = X.reshape(samples, 6, window_size)
     return X
+
 
 X_train = reshape_for_cnn(X_train)
 X_val = reshape_for_cnn(X_val)
@@ -142,8 +151,7 @@ class ActivityNet(nn.Module):
             nn.Dropout(0.3),
             nn.MaxPool1d(2),
         )
-        self.layer3 = nn.Sequential(
-            nn.Linear(self.flatten_size, n_classes))
+        self.layer3 = nn.Sequential(nn.Linear(self.flatten_size, n_classes))
 
     def forward(self, x):
         out = self.layer1(x)
@@ -246,6 +254,28 @@ plt.legend()
 
 plt.tight_layout()
 plt.show()
+
+
+def save_normalization_values(X_train):
+    """
+    Calculate and save normalization values (mean and std) for each sensor channel
+    """
+    norm_values = {"mean": [], "std": []}
+
+    for i in range(6):  # 6 channels of sensor data
+        mean = float(X_train[:, i, :].mean())
+        std = float(X_train[:, i, :].std())
+        norm_values["mean"].append(mean)
+        norm_values["std"].append(std)
+
+    # Save to file
+    with open("normalization_values.json", "w") as f:
+        json.dump(norm_values, f)
+
+    return norm_values
+
+
+save_normalization_values(X_train)
 
 # Test phase
 model.eval()
