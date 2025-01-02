@@ -9,8 +9,8 @@ import json
 import matplotlib.pyplot as plt
 
 # Configuration
-duracion = 5.0  
-num_datos = 165 
+duracion = 5.0
+num_datos = 165
 window_size = 80
 activities = ["baseball", "bolos", "boxeo", "golf", "tenis", "reposo"]
 n_classes = len(activities)
@@ -22,6 +22,7 @@ sense = SenseHat()
 # Lista para guardar los datos de la grabacion
 columnas = ["actividad", "t", "pitch", "roll", "yaw", "x_accel", "y_accel", "z_accel"]
 nuevos_datos = []
+
 
 # Define the CNN model
 class ActivityNet(nn.Module):
@@ -54,14 +55,14 @@ class ActivityNet(nn.Module):
         out = self.layer3(out)
         return out
 
+
 # Function to preprocess new data (without labels)
 def preprocess_data(data, window_size, normalize=True):
     # Convert the raw sensor data into windows (no labels involved)
     X = create_windows(data, window_size)
     X = reshape_for_cnn(X)
-    
+
     if normalize:
-        # If normalization values are available, use them
         try:
             with open(norm_values_file, "r") as f:
                 norm_values = json.load(f)
@@ -71,10 +72,10 @@ def preprocess_data(data, window_size, normalize=True):
                 X[:, i, :] = (X[:, i, :] - means[i]) / stds[i]
         except FileNotFoundError:
             print("Error: Normalization values file not found.")
-            pass  # Proceed without normalization if file is not found.
 
     X = torch.FloatTensor(X).to(device)
     return X
+
 
 # Create windows from the raw sensor data (no labels)
 def create_windows(data, window_size):
@@ -83,17 +84,18 @@ def create_windows(data, window_size):
         window = data[i : i + window_size]
         if len(window) == window_size:
             features = np.concatenate(
-                    [
-                        window["pitch"].values,
-                        window["roll"].values,
-                        window["yaw"].values,
-                        window["x_accel"].values,
-                        window["y_accel"].values,
-                        window["z_accel"].values,
-                    ]
-                )
+                [
+                    window["pitch"].values,
+                    window["roll"].values,
+                    window["yaw"].values,
+                    window["x_accel"].values,
+                    window["y_accel"].values,
+                    window["z_accel"].values,
+                ]
+            )
             windows.append(features)
     return np.array(windows)
+
 
 # Reshape data for CNN
 def reshape_for_cnn(X):
@@ -101,6 +103,7 @@ def reshape_for_cnn(X):
     X = X.reshape(samples, 6, window_size)
     return X
 
+
 # Function to predict activity from new data
 def predict_activity(model, data, window_size):
     X = preprocess_data(data, window_size)
@@ -108,20 +111,13 @@ def predict_activity(model, data, window_size):
         outputs = model(X)
         _, predicted = torch.max(outputs, 1)
         return predicted.cpu().numpy()
+
 
 # Load the model
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 model = ActivityNet(n_classes, window_size).to(device)
 model.load_state_dict(torch.load("best_activity_model.pt", weights_only=True))
 model.eval()  # Set model to evaluation mode
-
-# Function to predict activity from new data
-def predict_activity(model, data, window_size):
-    X = preprocess_data(data, window_size)
-    with torch.no_grad():
-        outputs = model(X)
-        _, predicted = torch.max(outputs, 1)
-        return predicted.cpu().numpy()
 
 # Ask user to press enter before starting recording
 input("Pulsa enter cuando estes listo para hacer la demo: ")
@@ -136,60 +132,40 @@ print("¡GRABANDO!")
 # Registrar el tiempo de inicio
 inicio = time.time()
 
-while time.time() - inicio <= duracion*1.1:
+while time.time() - inicio <= duracion * 1.1:
     # Obtener datos del sensor
     ori = sense.get_orientation()
     ace = sense.get_accelerometer_raw()
-    
+
     # Calcular el tiempo actual desde el inicio
     t = time.time() - inicio
-    
+
     # Cada fila se compone de:
     # [1 COL (actividad) +
     #  1 COL (t) +
     #  3 COLS (orientación) +
     #  3 COLS (aceleración)]
     datos_fila = [
-        None, t, ori['pitch'], ori['roll'], ori['yaw'], 
-        ace['x'], ace['y'], ace['z']
+        None,
+        t,
+        ori["pitch"],
+        ori["roll"],
+        ori["yaw"],
+        ace["x"],
+        ace["y"],
+        ace["z"],
     ]
-    
+
     # Agregar datos a la lista
     nuevos_datos.append(datos_fila)
 
 # Convertimos los datos a dataframe
 nuevos_datos = pd.DataFrame(nuevos_datos, columns=columnas)
 
-'''
-nuevos_datos = np.array(nuevos_datos)
-
-# Crear una figura con dos subgráficas
-fig, ax = plt.subplots(2, 1, figsize=(10, 8))
-fig.suptitle(f"Graficas de la grabación", fontsize=16)
-
-# Graficar la aceleración (ejes x, y, z)
-ax[0].plot(np.arange(len(nuevos_datos)), nuevos_datos[:, 3], label='x_accel')
-ax[0].plot(np.arange(len(nuevos_datos)), nuevos_datos[:, 4], label='y_accel')
-ax[0].plot(np.arange(len(nuevos_datos)), nuevos_datos[:, 5], label='z_accel')
-ax[0].grid(True)
-ax[0].legend()
-
-# Graficar la orientación (pitch, roll, yaw)
-ax[1].plot(np.arange(len(nuevos_datos)), nuevos_datos[:, 0], label='pitch')
-ax[1].plot(np.arange(len(nuevos_datos)), nuevos_datos[:, 1], label='roll')
-ax[1].plot(np.arange(len(nuevos_datos)), nuevos_datos[:, 2], label='yaw')
-ax[1].grid(True)
-ax[1].legend()
-
-#plt.tight_layout(rect=[0, 0, 1, 0.96])  # Ajustar el layout para que el título no se sobreponga
-plt.show()
-'''
-
 # Validar el número de muestras
 num_capturado = len(nuevos_datos)
 
 if num_capturado >= num_datos:
-    
     # Predict activities
     predictions = predict_activity(model, nuevos_datos, window_size)
 
@@ -199,8 +175,7 @@ if num_capturado >= num_datos:
     # Display predicted activities
     print("Actividades:", predicted_activities)
     print("Demo finalizada.")
-    
 else:
-    print(f"Error: No se han tomado suficientes datos ({num_capturado} muestras, mínimo requerido: {num_datos}).")
-
-
+    print(
+        f"Error: No se han tomado suficientes datos ({num_capturado} muestras, mínimo requerido: {num_datos})."
+    )
