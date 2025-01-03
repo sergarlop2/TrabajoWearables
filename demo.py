@@ -116,7 +116,7 @@ def predict_activity(model, data, window_size):
 # Load the model
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 model = ActivityNet(n_classes, window_size).to(device)
-model.load_state_dict(torch.load("best_activity_model.pt", weights_only=True))
+model.load_state_dict(torch.load("best_activity_model.pt", weights_only=True, map_location=torch.device('cpu')))
 model.eval()  # Set model to evaluation mode
 
 # Ask user to press enter before starting recording
